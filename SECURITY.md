@@ -1,6 +1,6 @@
 # Security and safety reports
 
-Bedside Drug Guide is a single static page. It has no server and no accounts, and it doesn't send anything anywhere. Stars, notes and custom entries stay in the browser on the device where they were made.
+Bedside Drug Guide is a single static page. It has no server and no accounts, and it doesn't send anything anywhere. Stars, notes and custom entries stay in the browser on the device where they were made, unless you move them with **Saved → Move to another device**. That makes a link with the items inside it, and nothing is uploaded.
 
 ## Report a security problem privately
 
@@ -10,6 +10,7 @@ For example, report:
 
 - text in a backup file, custom entry, note, search or link that runs as code in the page
 - a way for the page to load code from another site, or to send saved data to one
+- a transfer link that adds or changes saved items without asking first
 
 Include your browser and device, the steps to reproduce the problem, and if you can, a sample file or link that shows it.
 
