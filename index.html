@@ -2,6 +2,11 @@
 <html lang="en" data-theme="auto">
 <head>
 <meta charset="utf-8">
+<!-- Security policy: only the script at the bottom of this page may run, and the
+     page can't load or send anything over the network. The sha256 value is a
+     fingerprint of that script. If you change the script, update it or the page
+     stops working: run  python3 scripts/check_csp.py --fix  -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-ocXAY7EgH/NtnhzihYnUHIoFTDRmkooGSe8R8ToU/i8='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="description" content="Offline, searchable nursing drug reference with dosing calculators and medication safety tables.">
