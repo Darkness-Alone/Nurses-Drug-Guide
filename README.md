@@ -10,7 +10,7 @@ Content current as of October 2026.
 
 ## What's in it
 
-- **289 drug entries** covering dosing, administration, checks before giving, nursing considerations, monitoring, adverse effects, contraindications, interactions, dose adjustments, pregnancy and lactation, patient teaching, and overdose and antidotes
+- **299 drug entries** covering dosing, administration, checks before giving, nursing considerations, monitoring, adverse effects, contraindications, interactions, dose adjustments, pregnancy and lactation, patient teaching, and overdose and antidotes
 - **22 reference tables**, including high-alert medications, do-not-use abbreviations, look-alike and sound-alike names, antidotes, therapeutic drug levels, IV fluids and lab values
 - **12 calculators** that show their math, including infusion dose and rate, weight-based dose and creatinine clearance
 
