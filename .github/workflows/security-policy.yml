@@ -1,0 +1,24 @@
+# Fails if index.html's security policy no longer matches the page's script.
+# Browsers refuse to run a script whose fingerprint isn't in the policy, so a
+# stale fingerprint leaves the page loaded but not working. To fix:
+#   python3 scripts/check_csp.py --fix
+name: Security policy
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check page security policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Check script fingerprint
+        run: python3 scripts/check_csp.py

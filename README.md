@@ -44,3 +44,17 @@ Download `index.html` from this repository and open it in a browser on a compute
 - NIH [LactMed](https://www.ncbi.nlm.nih.gov/books/NBK501922/) for lactation questions
 
 Every entry was written for this guide. Nothing is copied from a published drug handbook.
+
+## Report a problem
+
+Found a wrong dose or another error? [Open an issue](https://github.com/Darkness-Alone/Nurses-Drug-Guide/issues/new) with the drug, the section, what it should say and a source. Don't include patient information. To report a security problem privately, see [SECURITY.md](SECURITY.md).
+
+## Editing the page
+
+`index.html` has a security policy that lets only its own script run and blocks it from loading or sending anything over the network. The policy holds a fingerprint of that script. After any change to the script, update the fingerprint, or the page will load but won't work:
+
+```
+python3 scripts/check_csp.py --fix
+```
+
+A check runs on every push and pull request and fails if the fingerprint is out of date.
