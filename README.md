@@ -19,7 +19,8 @@ Content current as of October 2026.
 - Search by generic or brand name, drug class, use, or any text in an entry. Common abbreviations such as afib, DVT, PPI and TXA work, and misspelled names get "Did you mean" suggestions.
 - Filter by category or by flag (high-alert, boxed warning, controlled, look-alike names, pediatric dosing, updated), or jump through the A–Z index.
 - Safety marks: Tall Man lettering for look-alike names, ISMP high-alert and FDA boxed-warning flags, DEA schedules, and anesthesia syringe-label colors by drug class.
-- Star drugs, add notes to any entry, and add drugs your unit uses. These are saved in your browser on that device only. To keep a copy or move them to another device, use **Saved → Download backup file**.
+- Star drugs, add notes to any entry, and add drugs your unit uses. These are saved in your browser on that device only. To keep a copy, use **Saved → Download backup file**.
+- Move your stars, notes and drug entries to another phone or computer with **Saved → Move to another device**: scan the QR code with the other device's camera, or send yourself the link. The items travel inside the link itself, so nothing is uploaded anywhere. Anyone with the link can read your notes, so send it only to yourself.
 - Dark mode, adjustable text size and print-friendly pages.
 - Keyboard shortcuts: `/` to search, `Enter` to open the top result, `↑` `↓` to move through results, `Esc` to clear the search or go back.
 
@@ -28,6 +29,8 @@ Content current as of October 2026.
 Open the link above in your phone's browser. On iPhone and iPad, use Safari: HTML files opened from Mail, Gmail or the Files app open in a preview that can't run the guide.
 
 To keep it on your home screen, open the link in Safari, tap Share, then **Add to Home Screen**.
+
+The Home Screen guide keeps its own stars and notes, separate from Safari's. To copy them in, make a link under **Saved → Move to another device**, copy it, then in the Home Screen guide go to **Saved → Paste a link from another device**.
 
 ## Offline
 

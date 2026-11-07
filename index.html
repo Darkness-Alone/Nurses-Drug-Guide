@@ -6,7 +6,7 @@
      page can't load or send anything over the network. The sha256 value is a
      fingerprint of that script. If you change the script, update it or the page
      stops working: run  python3 scripts/check_csp.py --fix  -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-ocXAY7EgH/NtnhzihYnUHIoFTDRmkooGSe8R8ToU/i8='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-76BUSMqYB4/2hGRGt8WZsEgEPXQg94iJgmGci5rc4H8='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="description" content="Offline, searchable nursing drug reference with dosing calculators and medication safety tables.">
@@ -354,10 +354,14 @@ table.t{width:100%;border-collapse:collapse;font-size:.9063rem}
 .status{margin-top:10px;font-size:.9375rem;min-height:1.5em}
 .status.ok{color:var(--primary-text)}
 .status.err{color:var(--alert-text)}
-.backup-text textarea,#importText{width:100%;min-height:140px;margin-top:10px;padding:10px;border:1px solid var(--input-border);border-radius:6px;background:var(--input);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.8125rem}
+.backup-text textarea,#importText,#moveLink,#moveText{width:100%;min-height:140px;margin-top:10px;padding:10px;border:1px solid var(--input-border);border-radius:6px;background:var(--input);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.8125rem}
 details{margin-top:12px}
 summary{cursor:pointer;font-weight:600;color:var(--primary-text);min-height:32px}
-.storage-warn{margin-top:14px;padding:12px 16px;border-radius:8px;background:var(--alert-soft);color:var(--alert-text);font-weight:600}
+.storage-warn,.move-warn{margin-top:14px;padding:12px 16px;border-radius:8px;background:var(--alert-soft);color:var(--alert-text);font-weight:600}
+#moveLink,#moveText{min-height:96px}
+#moveOut > p:first-child{margin-top:14px}
+.qr{width:100%;max-width:420px;margin-top:12px;border:1px solid var(--rule);border-radius:8px;overflow:hidden;background:#fff}
+.qr svg{display:block;width:100%;height:auto}
 .form{display:flex;flex-direction:column;gap:16px;margin-top:20px}
 .form .f2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .form label{display:block;font-weight:650;font-size:.9375rem;margin-bottom:6px}
@@ -566,6 +570,7 @@ dialog::backdrop{background:var(--scrim)}
 /* ================= basics ================= */
 const EDITION = 'October 2026';
 const APP_ID = 'bedside-drug-guide';
+const HOME_URL = 'https://darkness-alone.github.io/Nurses-Drug-Guide/';
 const BASE = JSON.parse(document.getElementById('drug-data').textContent);
 const REFS = JSON.parse(document.getElementById('ref-data').textContent);
 
@@ -1708,34 +1713,53 @@ function exportFile() {
     setStatus('Backup file created. Check your downloads folder.', 'ok');
   } catch (e) { setStatus('This browser blocked the download. Use “Show backup text” and copy it instead.', 'err'); }
 }
+// Drug and entry ids are lowercase words joined by hyphens; anything else in a
+// backup or link is ignored (this also keeps names like __proto__ out of S.notes).
+const SAVED_ID = /^[a-z0-9][a-z0-9-]{0,100}$/;
+const ownNote = id => (Object.prototype.hasOwnProperty.call(S.notes, id) && typeof S.notes[id] === 'string') ? S.notes[id] : '';
+// Merge saved items from a backup or transfer link into this device. Nothing is
+// removed. Returns how many stars, notes and entries were added or updated.
+function mergeSaved(data) {
+  let stars = 0, notes = 0, entries = 0;
+  for (const id of asArr(data.favorites)) if (typeof id === 'string' && SAVED_ID.test(id) && !S.favs.has(id)) { S.favs.add(id); stars++; }
+  for (const [id, t] of Object.entries(asObj(data.notes))) {
+    if (!SAVED_ID.test(id) || typeof t !== 'string' || !t.trim()) continue;
+    const cur = ownNote(id);
+    if (cur.includes(t)) continue;
+    // Take the incoming note when this device has none or it extends this one (an edited copy); otherwise keep both.
+    S.notes[id] = !cur.trim() || t.includes(cur) ? t : cur + '\n\n' + t;
+    notes++;
+  }
+  const byId = new Map(S.custom.map(c => [c.id, c]));
+  for (const c of asArr(data.custom)) {
+    const s = sanitizeCustom(c); if (!s) continue;
+    const old = byId.get(s.id);
+    if (old && typeof old.updated === 'string' && typeof s.updated === 'string' && old.updated >= s.updated) continue; // this device has the same or a newer copy
+    const raw = Object.assign({}, s); delete raw._custom; delete raw._ix;
+    byId.set(s.id, raw); entries++;
+  }
+  S.custom = [...byId.values()];
+  const rec = asArr(data.recents).filter(x => typeof x === 'string' && SAVED_ID.test(x));
+  S.recents = [...new Set(S.recents.concat(rec))].slice(0, 30);
+  saveFavs(); store.write('notes', S.notes); store.write('custom', S.custom); store.write('recents', S.recents);
+  rebuild(); renderFilters(); runSearch();
+  return {stars, notes, entries};
+}
 function importData(text) {
   let data;
   try { data = JSON.parse(text); } catch (e) { setStatus('That isn’t a valid backup. Paste the full text of a backup file.', 'err'); return; }
   data = asObj(data);
   if (data.app !== APP_ID) { setStatus('That file isn’t a Bedside Drug Guide backup.', 'err'); return; }
-  let nf2 = 0, nn = 0, nc = 0;
-  for (const id of asArr(data.favorites)) if (typeof id === 'string' && !S.favs.has(id)) { S.favs.add(id); nf2++; }
-  for (const [id, t] of Object.entries(asObj(data.notes))) {
-    if (typeof t !== 'string' || !t.trim()) continue;
-    const cur = S.notes[id] || '';
-    if (!cur.trim()) { S.notes[id] = t; nn++; } else if (!cur.includes(t)) { S.notes[id] = cur + '\n\n' + t; nn++; }
-  }
-  const byId = new Map(S.custom.map(c => [c.id, c]));
-  for (const c of asArr(data.custom)) { const s = sanitizeCustom(c); if (s) { const raw = Object.assign({}, s); delete raw._custom; delete raw._ix; byId.set(s.id, raw); nc++; } }
-  S.custom = [...byId.values()];
-  const rec = asArr(data.recents).filter(x => typeof x === 'string');
-  S.recents = [...new Set(S.recents.concat(rec))].slice(0, 30);
-  saveFavs(); store.write('notes', S.notes); store.write('custom', S.custom); store.write('recents', S.recents);
-  rebuild(); renderFilters(); runSearch();
+  const n = mergeSaved(data);
   renderSaved('');
-  setStatus(`Restored ${nf2} ${nf2 === 1 ? 'star' : 'stars'}, ${nn} ${nn === 1 ? 'note' : 'notes'} and ${nc} ${nc === 1 ? 'entry' : 'entries'}.`, 'ok');
+  setStatus(`Restored ${n.stars} ${n.stars === 1 ? 'star' : 'stars'}, ${n.notes} ${n.notes === 1 ? 'note' : 'notes'} and ${n.entries} ${n.entries === 1 ? 'entry' : 'entries'}.`, 'ok');
 }
 function savedList(ids, empty, extra) {
   const ds = ids.map(id => BY_ID.get(id)).filter(Boolean);
   if (!ds.length) return `<p class="muted">${empty}</p>`;
   return `<ul class="plain">${ds.map(d => `<li><a href="#drug/${encodeURIComponent(d.id)}">${esc(plainName(d))}<small>${esc(extra ? extra(d) : (d.pc || ''))}</small></a></li>`).join('')}</ul>`;
 }
-function renderSaved(sub) {
+function renderSaved(sub, notice) {
   if (sub === 'new') return renderForm(null);
   if (sub && sub.startsWith('edit/')) { const d = BY_ID.get(sub.slice(5)); if (d && d._custom) return renderForm(d); }
   const favIds = DRUGS.filter(d => S.favs.has(d.id)).map(d => d.id);
@@ -1744,12 +1768,23 @@ function renderSaved(sub) {
   const snippet = d => { const t = S.notes[d.id].replace(/\s+/g, ' ').trim(); return t.length > 110 ? t.slice(0, 107) + '…' : t; };
   el.savedPane.innerHTML = `<div class="page">
   <h1 tabindex="-1">Saved</h1>
-  <p class="lede">Stars, notes, history and your own entries are kept in this browser on this device. They don’t sync, and clearing browser data erases them. Download a backup to keep a copy or move to another device.</p>
+  <p class="lede">Stars, notes, history and your own entries are kept in this browser on this device. They don’t sync, and clearing browser data erases them. To copy them to another phone or computer, use <a href="#move">Move to another device</a>. To keep a copy, download a backup.</p>
+  ${notice ? `<p class="status ok" role="status">${esc(notice)}</p>` : ''}
   ${store.ok ? '' : '<p class="storage-warn">This browser is blocking storage, so anything you save here lasts only until you close the page. Download a backup before you leave.</p>'}
   <section><h2>Starred</h2>${savedList(favIds, 'Star a drug from its label to keep it here.')}</section>
   <section><h2>My notes</h2>${savedList(noteIds, 'Notes you add to a drug entry will be listed here.', snippet)}</section>
   <section><h2>My drug entries</h2><p>Add drugs your unit uses that aren’t in this guide. They show up in search with a “Mine” mark.</p>${mine.length ? savedList(mine, '') : ''}<div class="btn-row"><a class="btn btn-primary" href="#saved/new">Add a drug entry</a></div></section>
   <section><h2>Recently viewed</h2>${savedList(S.recents.filter(id => BY_ID.has(id)).slice(0, 15), 'Drugs you open will be listed here.')}${S.recents.length ? '<div class="btn-row"><button type="button" class="btn" data-act="clear-recents">Clear history</button></div>' : ''}</section>
+  <section id="move"><h2>Move to another device</h2>
+    <p>Make a link that copies your stars, notes and drug entries to another phone or computer. Everything travels inside the link itself. Nothing is uploaded anywhere.</p>
+    <div class="btn-row"><button type="button" class="btn btn-primary" data-act="move-make">Make a link</button></div>
+    <div id="moveOut" hidden></div>
+    <details><summary>Paste a link from another device</summary>
+      <p class="muted">Use this when opening the link doesn’t work. On iPhone, a guide added to the Home Screen keeps its own saved items, apart from Safari, so paste the link here in the Home Screen guide.</p>
+      <label class="sr-only" for="moveText">Paste a transfer link</label><textarea id="moveText" placeholder="Paste the whole link here"></textarea>
+      <div class="btn-row"><button type="button" class="btn" data-act="move-paste">Add from link</button></div></details>
+    <p class="status" id="moveStatus" role="status"></p>
+  </section>
   <section id="backup"><h2>Back up and restore</h2>
     <p>A backup file holds your stars, notes, history and entries. Restoring merges it with what’s already here.</p>
     <div class="btn-row"><button type="button" class="btn" data-act="export">Download backup file</button><button type="button" class="btn" data-act="show-backup">Show backup text</button><label class="btn">Restore from file<input type="file" accept="application/json,.json" id="importFile" hidden></label></div>
@@ -1759,6 +1794,266 @@ function renderSaved(sub) {
   </section>
 </div>`;
 }
+
+/* ================= move to another device ================= */
+// A transfer link carries the saved items after the "#", a part of the address
+// browsers never send to any server: #move/z<length>.<deflate, base64url JSON> or,
+// where the browser can't compress, #move/j<length>.<base64url JSON>. The length lets
+// a pasted link be cut cleanly from text around it and shows when an app cut it short.
+// #move alone opens the section.
+const MOVE_LIMIT = 4e6; // bytes of JSON, more than browser storage can hold
+let pendingMove = null;
+const plural = (n, one, many) => `${nf.format(n)} ${n === 1 ? one : many}`;
+const listAnd = parts => parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : (parts[0] || '');
+const savedSummary = (stars, notes, entries) => listAnd([stars && plural(stars, 'star', 'stars'), notes && plural(notes, 'note', 'notes'), entries && plural(entries, 'drug entry', 'drug entries')].filter(Boolean));
+function moveStatus(msg, kind) { const s = $('#moveStatus'); if (s) { s.textContent = msg; s.className = 'status' + (kind ? ' ' + kind : ''); } }
+function b64u(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function unb64u(str) {
+  const s = atob(str.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - str.length % 4) % 4));
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
+// Run bytes through a CompressionStream or DecompressionStream, stopping past `limit` bytes.
+async function pipeBytes(bytes, transform, limit) {
+  const reader = new Blob([bytes]).stream().pipeThrough(transform).getReader();
+  const parts = [];
+  let n = 0;
+  for (;;) {
+    const {done, value} = await reader.read();
+    if (done) break;
+    n += value.length;
+    if (limit && n > limit) { reader.cancel().catch(() => {}); throw new Error('too large'); }
+    parts.push(value);
+  }
+  const out = new Uint8Array(n);
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+function moveData() {
+  const favorites = [...S.favs].filter(id => BY_ID.has(id));
+  const notes = {};
+  for (const id of Object.keys(S.notes)) { const t = ownNote(id); if (t.trim() && BY_ID.has(id)) notes[id] = t; }
+  return {app: APP_ID, version: 1, edition: EDITION, favorites, notes, custom: S.custom};
+}
+async function makeMoveLink() {
+  const data = moveData(), out = $('#moveOut');
+  const what = savedSummary(data.favorites.length, Object.keys(data.notes).length, data.custom.length);
+  if (!what) { out.hidden = true; moveStatus('There’s nothing to move yet. Star a drug, add a note or add a drug entry first.', 'err'); return; }
+  const json = new TextEncoder().encode(JSON.stringify(data));
+  let kind = 'j', body = '';
+  if (typeof CompressionStream === 'function') { try { body = b64u(await pipeBytes(json, new CompressionStream('deflate'))); kind = 'z'; } catch (e) { body = ''; } }
+  if (!body) { kind = 'j'; body = b64u(json); }
+  const code = kind + body.length + '.' + body;
+  // A downloaded copy has a file address the other device can't open, so use the online guide.
+  const link = (/^https?:$/.test(location.protocol) ? location.origin + location.pathname : HOME_URL) + '#move/' + code;
+  const qr = qrSvg(link);
+  out.innerHTML = `<p>This link holds your ${esc(what)}.</p>
+    ${qr ? `<p class="muted">On the other device, point the camera at this code. Or copy the link and send it to yourself.</p><div class="qr">${qr}</div>` : '<p class="muted">This link is too long for a QR code. Copy it and send it to yourself.</p>'}
+    <label class="sr-only" for="moveLink">Transfer link</label><textarea id="moveLink" readonly></textarea>
+    <div class="btn-row"><button type="button" class="btn" data-act="move-copy">Copy link</button>${typeof navigator.share === 'function' ? '<button type="button" class="btn" data-act="move-share">Share…</button>' : ''}</div>
+    <p class="move-warn">Anyone who has this link can read your notes. Send it only to yourself, and delete the message once you’ve used it. Don’t put patient information in notes.</p>`;
+  $('#moveLink').value = link;
+  out.hidden = false;
+  moveStatus('', '');
+}
+async function copyMoveLink() {
+  const ta = $('#moveLink'); if (!ta) return;
+  let ok = false;
+  try { await navigator.clipboard.writeText(ta.value); ok = true; } catch (e) {
+    ta.focus(); ta.select();
+    try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+  }
+  moveStatus(ok ? 'Link copied. Paste it into a message or email to yourself.' : 'Select the link above and copy it.', ok ? 'ok' : '');
+}
+async function shareMoveLink() {
+  const ta = $('#moveLink'); if (!ta) return;
+  try { await navigator.share({title: 'Bedside Drug Guide saved items', url: ta.value}); }
+  catch (e) { if (!e || e.name !== 'AbortError') moveStatus('Sharing didn’t work here. Copy the link instead.', 'err'); }
+}
+// The transfer code from a pasted link, even if an app wrapped it, encoded the "#"
+// or added words after it.
+function moveCodeFrom(text) {
+  let t = String(text || '').replace(/\s+/g, '');
+  try { t = decodeURIComponent(t); } catch (e) { /* keep as is */ }
+  const m = /move\/([jz])(\d{1,8})\.([A-Za-z0-9_-]+)/.exec(t);
+  return m ? m[1] + m[2] + '.' + m[3].slice(0, Number(m[2])) : '';
+}
+async function decodeMove(code) {
+  try {
+    const m = /^([jz])(\d{1,8})\.([A-Za-z0-9_-]+)/.exec(code);
+    if (!m || m[3].length < Number(m[2])) return {error: 'damaged'}; // not a transfer code, or cut short
+    let bytes = unb64u(m[3].slice(0, Number(m[2])));
+    if (m[1] === 'z') {
+      if (typeof DecompressionStream !== 'function') return {error: 'old'};
+      bytes = await pipeBytes(bytes, new DecompressionStream('deflate'), MOVE_LIMIT);
+    } else if (bytes.length > MOVE_LIMIT) return {error: 'damaged'};
+    const data = asObj(JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(bytes)));
+    return data.app === APP_ID ? {data} : {error: 'damaged'};
+  } catch (e) { return {error: 'damaged'}; }
+}
+async function openMove(code) {
+  pendingMove = null;
+  const page = body => { el.savedPane.innerHTML = `<div class="page"><h1 tabindex="-1">Add saved items from another device</h1>${body}</div>`; };
+  page('<p class="lede">Reading the link…</p>');
+  const r = await decodeMove(code);
+  const now = parseHash();
+  if (now.view !== 'move' || now.id !== code) return; // the reader went elsewhere meanwhile
+  const back = '<div class="btn-row"><button type="button" class="btn" data-act="move-cancel">Go to Saved</button></div>';
+  if (r.error === 'old') return page(`<p class="lede">This browser is too old to open the link. Update it, or move your saved items with a backup file instead: on the other device, go to Saved and choose Download backup file.</p>${back}`);
+  if (r.error) return page(`<p class="lede">This link is incomplete or damaged. Some apps cut long links short. Make a new link on the other device, or paste the whole link under “Paste a link from another device” on the Saved page.</p>${back}`);
+  const favs = asArr(r.data.favorites).filter(id => typeof id === 'string' && SAVED_ID.test(id));
+  const notes = Object.entries(asObj(r.data.notes)).filter(([id, t]) => SAVED_ID.test(id) && typeof t === 'string' && t.trim());
+  const custom = asArr(r.data.custom).map(sanitizeCustom).filter(Boolean);
+  const what = savedSummary(favs.length, notes.length, custom.length);
+  if (!what) return page(`<p class="lede">This link doesn’t have any saved items in it.</p>${back}`);
+  pendingMove = r.data;
+  const names = custom.slice(0, 12).map(c => `<li>${esc(c.g)}</li>`).join('') + (custom.length > 12 ? `<li>and ${custom.length - 12} more</li>` : '');
+  page(`<p class="lede">This link has ${esc(what)}. Adding them won’t remove anything on this device. If both devices have a note for the same drug, the notes are combined.</p>
+    ${custom.length ? `<section><h2>Drug entries in the link</h2><ul>${names}</ul></section>` : ''}
+    <p class="move-warn">Only add a link you made yourself. A link from someone else could add drug entries with wrong doses.</p>
+    <div class="btn-row"><button type="button" class="btn btn-primary" data-act="move-accept">Add to this device</button><button type="button" class="btn" data-act="move-cancel">Don’t add</button></div>`);
+}
+
+/* ================= QR code (byte mode, error correction level L) ================= */
+// Per version 1–40: error-correction codewords per block, and number of blocks.
+const QR_EC = [0, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28, 28, 28, 30, 30, 26, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30];
+const QR_BLOCKS = [0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 24, 25];
+function qrRawModules(v) { let r = (16 * v + 128) * v + 64; if (v >= 2) { const n = Math.floor(v / 7) + 2; r -= (25 * n - 10) * n - 55; if (v >= 7) r -= 36; } return r; }
+const qrDataLen = v => Math.floor(qrRawModules(v) / 8) - QR_EC[v] * QR_BLOCKS[v];
+function gfMul(x, y) { let z = 0; for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11d); z ^= ((y >>> i) & 1) * x; } return z; }
+function rsDivisor(n) {
+  const r = new Array(n).fill(0); r[n - 1] = 1;
+  let root = 1;
+  for (let i = 0; i < n; i++) { for (let j = 0; j < n; j++) { r[j] = gfMul(r[j], root); if (j + 1 < n) r[j] ^= r[j + 1]; } root = gfMul(root, 2); }
+  return r;
+}
+function rsRemainder(data, div) {
+  const r = div.map(() => 0);
+  for (const b of data) { const f = b ^ r.shift(); r.push(0); div.forEach((c, i) => { r[i] ^= gfMul(c, f); }); }
+  return r;
+}
+function qrPenalty(mod, size) {
+  const at = (x, y) => mod[y * size + x];
+  let p = 0, dark = 0;
+  for (let pass = 0; pass < 2; pass++) for (let a = 0; a < size; a++) {
+    let run = 0, prev = -1, line = '';
+    for (let b = 0; b < size; b++) {
+      const c = pass ? at(a, b) : at(b, a);
+      line += c;
+      if (c === prev) { run++; if (run === 5) p += 3; else if (run > 5) p++; } else { run = 1; prev = c; }
+    }
+    for (const pat of ['10111010000', '00001011101']) for (let k = line.indexOf(pat); k !== -1; k = line.indexOf(pat, k + 1)) p += 40;
+  }
+  for (let y = 0; y < size - 1; y++) for (let x = 0; x < size - 1; x++) { const c = at(x, y); if (c === at(x + 1, y) && c === at(x, y + 1) && c === at(x + 1, y + 1)) p += 3; }
+  for (let i = 0; i < mod.length; i++) dark += mod[i];
+  return p + Math.floor(Math.abs(dark * 20 - mod.length * 10) / mod.length) * 10;
+}
+// Module grid for `bytes`, or null when they don't fit in version 40.
+function qrMatrix(bytes) {
+  let v = 1;
+  while (v <= 40 && 4 + (v < 10 ? 8 : 16) + bytes.length * 8 > qrDataLen(v) * 8) v++;
+  if (v > 40) return null;
+  const bits = [], put = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+  put(4, 4); put(bytes.length, v < 10 ? 8 : 16);
+  for (const b of bytes) put(b, 8);
+  const cap = qrDataLen(v) * 8;
+  put(0, Math.min(4, cap - bits.length));
+  put(0, (8 - bits.length % 8) % 8);
+  for (let pad = 0xec; bits.length < cap; pad ^= 0xec ^ 0x11) put(pad, 8);
+  const data = [];
+  for (let i = 0; i < bits.length; i += 8) data.push(bits.slice(i, i + 8).reduce((a, b) => (a << 1) | b, 0));
+  // Split into blocks, add error correction, interleave.
+  const nb = QR_BLOCKS[v], ec = QR_EC[v], raw = Math.floor(qrRawModules(v) / 8);
+  const nShort = nb - raw % nb, shortLen = Math.floor(raw / nb), div = rsDivisor(ec), blocks = [];
+  for (let i = 0, k = 0; i < nb; i++) {
+    const d = data.slice(k, k + shortLen - ec + (i < nShort ? 0 : 1)); k += d.length;
+    const e = rsRemainder(d, div);
+    if (i < nShort) d.push(0);
+    blocks.push(d.concat(e));
+  }
+  const cw = [];
+  for (let i = 0; i < blocks[0].length; i++) blocks.forEach((b, j) => { if (i !== shortLen - ec || j >= nShort) cw.push(b[i]); });
+  // Finder, timing and alignment patterns, format and version areas.
+  const size = v * 4 + 17, mod = new Uint8Array(size * size), fn = new Uint8Array(size * size);
+  const set = (x, y, dark) => { mod[y * size + x] = dark ? 1 : 0; fn[y * size + x] = 1; };
+  for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+  for (const [cx, cy] of [[3, 3], [size - 4, 3], [3, size - 4]]) for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+    const x = cx + dx, y = cy + dy, dist = Math.max(Math.abs(dx), Math.abs(dy));
+    if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, dist !== 2 && dist !== 4);
+  }
+  if (v > 1) {
+    const n = Math.floor(v / 7) + 2, step = v === 32 ? 26 : Math.ceil((v * 4 + 4) / (n * 2 - 2)) * 2, pos = [6];
+    for (let p = size - 7; pos.length < n; p -= step) pos.splice(1, 0, p);
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      if ((i === 0 && j === 0) || (i === 0 && j === n - 1) || (i === n - 1 && j === 0)) continue;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(pos[i] + dx, pos[j] + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+    }
+  }
+  const format = mask => {
+    const d = (1 << 3) | mask; // level L is 01
+    let r = d;
+    for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537);
+    const b = ((d << 10) | r) ^ 0x5412, bit = i => (b >>> i) & 1;
+    for (let i = 0; i <= 5; i++) set(8, i, bit(i));
+    set(8, 7, bit(6)); set(8, 8, bit(7)); set(7, 8, bit(8));
+    for (let i = 9; i < 15; i++) set(14 - i, 8, bit(i));
+    for (let i = 0; i < 8; i++) set(size - 1 - i, 8, bit(i));
+    for (let i = 8; i < 15; i++) set(8, size - 15 + i, bit(i));
+    set(8, size - 8, 1);
+  };
+  format(0);
+  if (v >= 7) {
+    let r = v;
+    for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1f25);
+    const b = (v << 12) | r;
+    for (let i = 0; i < 18; i++) { const a = size - 11 + i % 3, c = Math.floor(i / 3), dark = (b >>> i) & 1; set(a, c, dark); set(c, a, dark); }
+  }
+  // Codewords, in the zigzag order.
+  let i = 0;
+  for (let right = size - 1; right >= 1; right -= 2) {
+    if (right === 6) right = 5;
+    for (let vert = 0; vert < size; vert++) for (let j = 0; j < 2; j++) {
+      const x = right - j, y = ((right + 1) & 2) === 0 ? size - 1 - vert : vert;
+      if (!fn[y * size + x] && i < cw.length * 8) { mod[y * size + x] = (cw[i >>> 3] >>> (7 - (i & 7))) & 1; i++; }
+    }
+  }
+  // Use the mask with the lowest penalty.
+  const MASKS = [(x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, x => x % 3 === 0, (x, y) => (x + y) % 3 === 0,
+    (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0, (x, y) => x * y % 2 + x * y % 3 === 0,
+    (x, y) => (x * y % 2 + x * y % 3) % 2 === 0, (x, y) => ((x + y) % 2 + x * y % 3) % 2 === 0];
+  const applyMask = m => { for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (!fn[y * size + x] && MASKS[m](x, y)) mod[y * size + x] ^= 1; };
+  let best = 0, bestScore = Infinity;
+  for (let m = 0; m < 8; m++) {
+    applyMask(m); format(m);
+    const s = qrPenalty(mod, size);
+    if (s < bestScore) { best = m; bestScore = s; }
+    applyMask(m);
+  }
+  applyMask(best); format(best);
+  return {size, mod};
+}
+// QR code as SVG markup, or '' when the text is too long for one.
+function qrSvg(text) {
+  const q = qrMatrix(new TextEncoder().encode(text));
+  if (!q) return '';
+  const {size, mod} = q, n = size + 8;
+  let d = '';
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    if (!mod[y * size + x]) continue;
+    let w = 1;
+    while (x + w < size && mod[y * size + x + w]) w++;
+    d += `M${x + 4} ${y + 4}h${w}v1h-${w}z`;
+    x += w - 1;
+  }
+  return `<svg viewBox="0 0 ${n} ${n}" role="img" aria-label="QR code for the transfer link" shape-rendering="crispEdges"><rect width="${n}" height="${n}" fill="#fff"/><path fill="#000" d="${d}"/></svg>`;
+}
+
 function renderForm(d) {
   const v = k => esc(d && d[k] ? d[k] : '');
   const lines = a => esc(asArr(a).join('\n'));
@@ -1834,7 +2129,7 @@ function renderAbout() {
     <li><span class="fi fi-new"></span><span>Updated: a label, market or guideline change from 2023 to 2026.</span></li>
     <li><span class="swatch" style="--c:var(--b-opioid);width:28px;height:14px"></span><span>Color band: the anesthesia syringe-label color for the drug’s class. See <a href="#ref/label-colors">Syringe label colors</a>.</span></li>
     <li><span style="font-weight:800;min-width:28px">Aa</span><span>Tall Man lettering (for example HYDROmorphone) highlights look-alike names, following FDA and ISMP lists.</span></li></ul></section>
-  <section><h2>Your saved data</h2><p>Stars, notes, history and your own entries are saved in this browser on this device only. They don’t sync between browsers or devices, private windows may not keep them, and clearing browser data removes them. Go to <a href="#saved">Saved</a> to download a backup and restore it elsewhere.</p></section>
+  <section><h2>Your saved data</h2><p>Stars, notes, history and your own entries are saved in this browser on this device only. They don’t sync between browsers or devices, private windows may not keep them, and clearing browser data removes them. To copy them to another phone or computer, use <a href="#move">Move to another device</a> on the Saved page. You can also download a backup there.</p></section>
   <section><h2>Sources consulted</h2><ul>
     <li>FDA prescribing information and safety communications, via <a href="https://dailymed.nlm.nih.gov/" rel="noopener" target="_blank">DailyMed</a></li>
     <li>ISMP List of High-Alert Medications in Acute Care Settings (2024), ISMP List of Error-Prone Abbreviations, and FDA and ISMP Tall Man lettering lists</li>
@@ -1881,6 +2176,11 @@ function route() {
     case 'calc': setView('calc'); openCalc(id); break;
     case 'ref': setView('ref'); openRef(id); break;
     case 'saved': setView('saved'); renderSaved(id); el.savedPane.scrollTop = 0; break;
+    case 'move':
+      setView('saved'); el.savedPane.scrollTop = 0;
+      if (id) openMove(id);
+      else { renderSaved(''); $('#move', el.savedPane).scrollIntoView({block: 'start'}); }
+      break;
     case 'about': setView('about'); renderAbout(); el.aboutPane.scrollTop = 0; break;
     default:
       setView('drugs'); S.current = null; markCurrent();
@@ -2046,7 +2346,20 @@ el.savedPane.addEventListener('click', e => {
   const act = a.dataset.act;
   if (act === 'export') exportFile();
   else if (act === 'show-backup') { const box = $('#backupText'); box.hidden = false; const ta = $('#backupArea'); ta.value = JSON.stringify(backupObject(), null, 2); ta.focus(); ta.select(); setStatus('Select all of the text and copy it somewhere safe.', ''); }
-  else if (act === 'import-text') importData($('#importText').value);
+  else if (act === 'import-text') { const v = $('#importText').value, code = !v.trim().startsWith('{') && moveCodeFrom(v); if (code) location.hash = '#move/' + code; else importData(v); }
+  else if (act === 'move-make') makeMoveLink();
+  else if (act === 'move-copy') copyMoveLink();
+  else if (act === 'move-share') shareMoveLink();
+  else if (act === 'move-paste') { const code = moveCodeFrom($('#moveText').value); if (code) location.hash = '#move/' + code; else moveStatus('That isn’t a transfer link. Copy the whole link and try again.', 'err'); }
+  else if (act === 'move-accept') {
+    const data = pendingMove; pendingMove = null;
+    if (!data || parseHash().view !== 'move') return;
+    history.replaceState(null, '', '#saved'); // take the saved items out of the address bar
+    const n = mergeSaved(data), what = savedSummary(n.stars, n.notes, n.entries);
+    renderSaved('', what ? `Added ${what}.` : 'Everything in the link was already on this device.');
+    el.savedPane.scrollTop = 0;
+  }
+  else if (act === 'move-cancel') { pendingMove = null; location.replace('#saved'); }
   else if (act === 'clear-recents') { S.recents = []; store.write('recents', []); renderSaved(''); renderRecentStrip(); }
   else if (act === 'delete-custom') {
     if (!a.classList.contains('confirm')) { a.classList.add('confirm'); a.textContent = 'Select again to delete'; setTimeout(() => { if (a.isConnected) { a.classList.remove('confirm'); a.textContent = 'Delete entry'; } }, 5000); return; }
