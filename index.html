@@ -58,7 +58,7 @@ kbd{font-family:inherit;font-size:.8em;font-weight:600;border:1px solid var(--ru
 [hidden]{display:none!important}
 
 /* ---------- shell ---------- */
-#app{display:flex;flex-direction:column;height:100vh;height:100dvh}
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
 .top{flex:none;display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:20px;padding:10px 20px;background:var(--label);border-bottom:1px solid var(--rule);position:relative;z-index:5}
 .brand{display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none;min-width:0}
 .brand-mark{width:34px;height:24px;flex:none;color:var(--ink)}
@@ -92,7 +92,7 @@ main{flex:1;min-height:0;position:relative}
 /* ---------- panes ---------- */
 .pane-list{width:360px;flex:none;display:flex;flex-direction:column;min-height:0;background:var(--label);border-right:1px solid var(--rule)}
 .pane-index{width:290px}
-.pane-detail{flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+.pane-detail{flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;position:relative;overscroll-behavior:contain}
 .pane-detail:focus{outline:none}
 .single .pane-detail{width:100%}
 .backbar{display:none}
@@ -260,7 +260,7 @@ table.dose{width:100%;border-collapse:collapse;background:var(--label);border:1p
 .edition{margin-top:36px;font-size:.8125rem;color:var(--muted)}
 
 /* ---------- index panes (calc, ref) ---------- */
-.index-scroll{overflow-y:auto;flex:1;padding:8px 0 24px}
+.index-scroll{overflow-y:auto;flex:1;padding:8px 0 24px;position:relative;overscroll-behavior:contain}
 .idx-h{font-size:.8125rem;font-weight:700;color:var(--muted);padding:14px 18px 6px}
 .idx{list-style:none;margin:0;padding:0}
 .idx a{display:block;padding:8px 18px;color:var(--ink);text-decoration:none;font-size:.9375rem;border-left:3px solid transparent}
@@ -453,7 +453,7 @@ dialog::backdrop{background:var(--scrim)}
 @media print{
   @page{margin:14mm}
   body{background:#fff;color:#000}
-  #app{display:block;height:auto}
+  #app{display:block;height:auto;overflow:visible}
   .top,.tabs-bottom,.pane-list,.toc,.jumpbar,.label-actions,.backbar,.notes textarea,.note-status,dialog{display:none!important}
   main{position:static}
   .view{position:static;display:none!important}
