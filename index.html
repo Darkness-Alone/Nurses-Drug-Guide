@@ -6,7 +6,7 @@
      page can't load or send anything over the network. The sha256 value is a
      fingerprint of that script. If you change the script, update it or the page
      stops working: run  python3 scripts/check_csp.py --fix  -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Qz4OFhYDBcgAWhT/CN0wXHiy8yO6m33/koz/OqHzCmg='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-/Tr/pB1AutCny7mKAL45TvDRDyyf3JkMQbRSwipclwo='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="description" content="Offline, searchable nursing drug reference with dosing calculators and medication safety tables.">
@@ -2288,7 +2288,15 @@ el.drugPane.addEventListener('click', e => {
   const j = e.target.closest('[data-jump]');
   if (j) {
     const target = document.getElementById(j.dataset.jump);
-    if (target) { target.scrollIntoView({behavior: smooth(), block: 'start'}); const h = $('h2', target); if (h) h.focus({preventScroll: true}); }
+    if (target) {
+      // On phones the sticky "All drugs" bar covers the top of the pane, so land the
+      // section just below it (16 px gap, as on desktop where the bar is hidden).
+      const pane = el.drugPane, bar = $('.backbar', pane);
+      const cover = bar && bar.offsetParent ? bar.offsetHeight : 0;
+      const top = pane.scrollTop + target.getBoundingClientRect().top - pane.getBoundingClientRect().top - cover - 16;
+      pane.scrollTo({top: Math.max(0, top), behavior: smooth()});
+      const h = $('h2', target); if (h) h.focus({preventScroll: true});
+    }
     return;
   }
   const a = e.target.closest('[data-act]');
