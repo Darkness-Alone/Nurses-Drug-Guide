@@ -4,7 +4,7 @@ A searchable nursing drug reference in a single HTML file. It works offline, wit
 
 **Open it:** https://darkness-alone.github.io/Nurses-Drug-Guide/
 
-Content current as of October 2026.
+Content current as of November 2026.
 
 > **Quick reference only.** This guide is for nurses and nursing students. It doesn't replace current prescribing information, your pharmacist, clinical judgment, or your institution's policies and protocols. Doses are typical adult doses unless an entry says otherwise. Verify the dose, route and rate before giving any medication.
 
